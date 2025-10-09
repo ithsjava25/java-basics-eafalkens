@@ -14,6 +14,8 @@ public class Main {
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
+        LocalDate chosenDate = null;
+
         System.out.println("Electricity price program starting");
 
         ElpriserAPI elpriserAPI = new ElpriserAPI();
@@ -45,8 +47,21 @@ public class Main {
                 System.out.println("Unknown zone.");
         }
 
+        for (int i = 0; i < args.length - 1; i++) {
+            if (args[i].equals("--date")) {
+                try {
+                    chosenDate = LocalDate.parse(args[i + 1]);
+                } catch (Exception e) {
+                    System.out.println("Invalid date format. Please use YYYY-MM-DD.");
+                    scanner.close();
+                    return;
+                }
+            }
+        }
+
         ElpriserAPI.Prisklass priceClass = ElpriserAPI.Prisklass.valueOf(zone);
-        LocalDate today = LocalDate.now();
+        LocalDate today = (chosenDate != null) ? chosenDate : LocalDate.now();
+        System.out.println("Using date: " + today);
         List<ElpriserAPI.Elpris> prices = elpriserAPI.getPriser(today, priceClass);
         System.out.println("Number of prices fetched: " + prices.size());
 
@@ -89,10 +104,12 @@ public class Main {
         int windowSize = windowHours * slotsPerHour;
 
         int startIndex = 0;
-        var nextHour = ZonedDateTime.now().truncatedTo(ChronoUnit.HOURS).plusHours(1);
-        while (startIndex < allPrices.size()
-                && allPrices.get(startIndex).timeStart().isBefore(nextHour)) {
-            startIndex++;
+        if (today.equals(LocalDate.now())) {
+            var nextHour = ZonedDateTime.now().truncatedTo(ChronoUnit.HOURS).plusHours(1);
+            while (startIndex < allPrices.size()
+                    && allPrices.get(startIndex).timeStart().isBefore(nextHour)) {
+                startIndex++;
+            }
         }
 
         if (allPrices.size() - startIndex < windowSize) {
