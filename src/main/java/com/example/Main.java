@@ -1,5 +1,8 @@
 package com.example;
 
+import java.time.Duration;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Scanner;
 import java.time.LocalDate;
@@ -69,6 +72,52 @@ public class Main {
             System.out.printf("Time: %s Price: %.2f SEK/kWh.%n", price.timeStart().toLocalTime(), price.sekPerKWh());
         }
 
+        System.out.print("Enter window length in hours (2, 4 or 8): ");
+        int windowHours = scanner.nextInt();
+
+        while (windowHours != 2 && windowHours != 4 && windowHours != 8) {
+            System.out.println("Please enter 2, 4 or 8: ");
+            windowHours = scanner.nextInt();
+        }
+
+        int slotMinutes = (int) Duration.between(
+                allPrices.get(0).timeStart(),
+                allPrices.get(0).timeEnd()
+        ).toMinutes();
+
+        int slotsPerHour = 60 / slotMinutes;
+        int windowSize = windowHours * slotsPerHour;
+
+        int startIndex = 0;
+        var nextHour = ZonedDateTime.now().truncatedTo(ChronoUnit.HOURS).plusHours(1);
+        while (startIndex < allPrices.size()
+                && allPrices.get(startIndex).timeStart().isBefore(nextHour)) {
+            startIndex++;
+        }
+
+        if (allPrices.size() - startIndex < windowSize) {
+            System.out.printf("Not enough data for a %dh window starting now.%n", windowHours);
+        } else {
+            int bestStart = startIndex;
+            double bestSum = Double.MAX_VALUE;
+
+            for (int i = startIndex; i <= allPrices.size() - windowSize; i++) {
+                double sum = 0.0;
+                for (int j = i; j < i + windowSize; j++) {
+                    sum += allPrices.get(j).sekPerKWh();
+                }
+                if (sum < bestSum) {
+                    bestSum = sum;
+                    bestStart = i;
+                }
+            }
+
+            var start = allPrices.get(bestStart);
+            var end = allPrices.get(bestStart + windowSize - 1);
+            double avg = bestSum / windowSize;
+            System.out.printf("The cheapest %dh window is from %s to %s with an average price of %.2f SEK/kWh.%n", windowHours, start.timeStart().toLocalTime(), end.timeEnd().toLocalTime(), avg);
+        }
+
         if (prices.isEmpty()) {
             System.out.println("No values for today's date");
         } else {
@@ -77,8 +126,14 @@ public class Main {
                 sum += price.sekPerKWh();
             }
             int count = prices.size();
+            int slotMinutesToday = (int) Duration.between(
+                    prices.get(0).timeStart(),
+                    prices.get(0).timeEnd()
+            ).toMinutes();
+            int totalHours = (count * slotMinutesToday) / 60;
+
             double average = sum / count;
-            System.out.printf("Average price for %s over %dh is %.2f SEK/kWh.%n", today, count, average);
+            System.out.printf("Average price for %s over %dh is %.2f SEK/kWh.%n", today, totalHours, average);
 
             prices.sort(Comparator.comparing(ElpriserAPI.Elpris::timeStart));
 
