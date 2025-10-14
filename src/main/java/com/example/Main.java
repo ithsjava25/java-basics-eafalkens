@@ -8,7 +8,8 @@ import com.example.api.ElpriserAPI;
 
 public class Main {
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
+        boolean hasConsole = System.console() != null;
+        Scanner scanner = hasConsole ? new Scanner(System.in) : null;
 
         LocalDate chosenDate = null;
 
@@ -17,7 +18,6 @@ public class Main {
         ElpriserAPI elpriserAPI = new ElpriserAPI();
 
         String zone = null;
-
         for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equals("--zone")) {
                 zone = args[i + 1].trim().toUpperCase();
@@ -25,13 +25,17 @@ public class Main {
         }
 
         if (zone == null) {
-            System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
-            zone = scanner.nextLine().trim().toUpperCase();
-        }
-
-        while (!zone.equals("SE1") && !zone.equals("SE2") && !zone.equals("SE3") && !zone.equals("SE4")) {
-            System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
-            zone = scanner.nextLine().trim().toUpperCase();
+            if (hasConsole) {
+                System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
+                zone = scanner.nextLine().trim().toUpperCase();
+                while (!zone.equals("SE1") && !zone.equals("SE2") && !zone.equals("SE3") && !zone.equals("SE4")) {
+                    System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
+                    zone = scanner.nextLine().trim().toUpperCase();
+                }
+            } else {
+                zone = "SE3"; // default i CI/GitHub Actions
+                System.out.println("No console detected. Using default zone: " + zone);
+            }
         }
 
         System.out.println("Selected zone: " + zone);
@@ -59,7 +63,7 @@ public class Main {
                     chosenDate = LocalDate.parse(args[i + 1]);
                 } catch (Exception e) {
                     System.out.println("Invalid date format. Please use YYYY-MM-DD.");
-                    scanner.close();
+                    if (scanner != null) scanner.close();
                     return;
                 }
             }
@@ -85,7 +89,7 @@ public class Main {
 
         if (allPrices.isEmpty()) {
             System.out.println("No prices available for today or tomorrow.");
-            scanner.close();
+            if (scanner != null) scanner.close();
             return;
         }
 
@@ -95,12 +99,21 @@ public class Main {
             System.out.printf("Time: %s Price: %.2f SEK/kWh.%n", price.timeStart().toLocalTime(), price.sekPerKWh());
         }
 
-        System.out.print("Enter window length in hours (2, 4 or 8): ");
-        int windowHours = scanner.nextInt();
-
-        while (windowHours != 2 && windowHours != 4 && windowHours != 8) {
-            System.out.println("Please enter 2, 4 or 8: ");
-            windowHours = scanner.nextInt();
+        int windowHours;
+        if (hasConsole) {
+            System.out.print("Enter window length in hours (2, 4 or 8): ");
+            while (true) {
+                if (scanner.hasNextInt()) {
+                    windowHours = scanner.nextInt();
+                    if (windowHours == 2 || windowHours == 4 || windowHours == 8) break;
+                } else {
+                    scanner.next();
+                }
+                System.out.println("Please enter 2, 4 or 8: ");
+            }
+        } else {
+            windowHours = 4;
+            System.out.println("No console detected. Using default window: " + windowHours + "h");
         }
 
         int slotMinutes = (int) Duration.between(
@@ -183,6 +196,6 @@ public class Main {
             System.out.printf("Cheapest: %s %.2f SEK/kWh.%n", minPrice.timeStart().toLocalTime(), minPrice.sekPerKWh());
             System.out.printf("Most expensive: %s %.2f SEK/kWh.%n", maxPrice.timeStart().toLocalTime(), maxPrice.sekPerKWh());
         }
-        scanner.close();
+        if (scanner != null) scanner.close();
     }
 }
