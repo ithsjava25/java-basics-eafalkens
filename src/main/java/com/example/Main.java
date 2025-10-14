@@ -20,8 +20,18 @@ public class Main {
 
         ElpriserAPI elpriserAPI = new ElpriserAPI();
 
-        System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
-        String zone = scanner.nextLine().trim().toUpperCase();
+        String zone = null;
+
+        for (int i = 0; i < args.length - 1; i++) {
+            if (args[i].equals("--zone")) {
+                zone = args[i + 1].trim().toUpperCase();
+            }
+        }
+
+        if (zone == null) {
+            System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
+            zone = scanner.nextLine().trim().toUpperCase();
+        }
 
         while (!zone.equals("SE1") && !zone.equals("SE2") && !zone.equals("SE3") && !zone.equals("SE4")) {
             System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
@@ -150,7 +160,7 @@ public class Main {
             int totalHours = (count * slotMinutesToday) / 60;
 
             double average = sum / count;
-            System.out.printf("Average price for %s over %dh is %.2f SEK/kWh.%n", today, totalHours, average);
+            System.out.printf("Average pri4ce for %s over %dh is %.2f SEK/kWh.%n", today, totalHours, average);
 
             prices.sort(Comparator.comparing(ElpriserAPI.Elpris::timeStart));
 
@@ -159,10 +169,14 @@ public class Main {
 
             for (int i = 1; i < prices.size(); i++) {
                 ElpriserAPI.Elpris price = prices.get(i);
-                if (price.sekPerKWh() < minPrice.sekPerKWh()) {
+                if (price.sekPerKWh() < minPrice.sekPerKWh() ) {
+                    minPrice = price;
+                } else if (price.sekPerKWh() ==  minPrice.sekPerKWh() && price.timeStart().isBefore(minPrice.timeStart())) {
                     minPrice = price;
                 }
                 if (price.sekPerKWh() > maxPrice.sekPerKWh()) {
+                    maxPrice = price;
+                } else if (price.sekPerKWh() ==  maxPrice.sekPerKWh() && price.timeStart().isBefore(maxPrice.timeStart())) {
                     maxPrice = price;
                 }
             }
