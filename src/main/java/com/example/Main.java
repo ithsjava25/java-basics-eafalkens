@@ -2,13 +2,9 @@ package com.example;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.Scanner;
+import java.util.*;
 import java.time.LocalDate;
 import com.example.api.ElpriserAPI;
-import java.util.ArrayList;
-import java.util.Comparator;
 
 public class Main {
     public static void main(String[] args) {
@@ -82,8 +78,10 @@ public class Main {
         List<ElpriserAPI.Elpris> allPrices = new ArrayList<>(prices);
         allPrices.addAll(pricesTomorrow);
 
-        allPrices.sort(Comparator.comparing(ElpriserAPI.Elpris::timeStart));
-        System.out.println("All prices fetched: " + allPrices.size());
+        if (Arrays.asList(args).contains("--sorted")) {
+            allPrices.sort(Comparator.comparing(ElpriserAPI.Elpris::sekPerKWh).reversed());
+            System.out.println("All prices fetched: " + allPrices.size());
+        }
 
         if (allPrices.isEmpty()) {
             System.out.println("No prices available for today or tomorrow.");
@@ -115,9 +113,9 @@ public class Main {
 
         int startIndex = 0;
         if (today.equals(LocalDate.now())) {
-            var nextHour = ZonedDateTime.now().truncatedTo(ChronoUnit.HOURS).plusHours(1);
+            ZonedDateTime now = ZonedDateTime.now();
             while (startIndex < allPrices.size()
-                    && allPrices.get(startIndex).timeStart().isBefore(nextHour)) {
+                    && !allPrices.get(startIndex).timeStart().isAfter(now)) {
                 startIndex++;
             }
         }
@@ -160,7 +158,7 @@ public class Main {
             int totalHours = (count * slotMinutesToday) / 60;
 
             double average = sum / count;
-            System.out.printf("Average pri4ce for %s over %dh is %.2f SEK/kWh.%n", today, totalHours, average);
+            System.out.printf("Average price for %s over %dh is %.2f SEK/kWh.%n", today, totalHours, average);
 
             prices.sort(Comparator.comparing(ElpriserAPI.Elpris::timeStart));
 
@@ -171,12 +169,14 @@ public class Main {
                 ElpriserAPI.Elpris price = prices.get(i);
                 if (price.sekPerKWh() < minPrice.sekPerKWh() ) {
                     minPrice = price;
-                } else if (price.sekPerKWh() ==  minPrice.sekPerKWh() && price.timeStart().isBefore(minPrice.timeStart())) {
+                } else if (Double.compare(price.sekPerKWh(), minPrice.sekPerKWh()) == 0
+                        && price.timeStart().isBefore(minPrice.timeStart())) {
                     minPrice = price;
                 }
                 if (price.sekPerKWh() > maxPrice.sekPerKWh()) {
                     maxPrice = price;
-                } else if (price.sekPerKWh() ==  maxPrice.sekPerKWh() && price.timeStart().isBefore(maxPrice.timeStart())) {
+                } else if (Double.compare(price.sekPerKWh(), maxPrice.sekPerKWh()) == 0
+                        && price.timeStart().isBefore(maxPrice.timeStart())) {
                     maxPrice = price;
                 }
             }
