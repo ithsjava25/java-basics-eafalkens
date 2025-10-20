@@ -1,201 +1,230 @@
 package com.example;
 
-import java.time.Duration;
-import java.time.ZonedDateTime;
-import java.util.*;
-import java.time.LocalDate;
+//Importera nödvändiga klasser
 import com.example.api.ElpriserAPI;
 
+import java.time.Duration;
+import java.time.ZonedDateTime;
+import java.time.LocalDate;
+import java.util.*;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+
 public class Main {
+
+    private static final Locale SV = Locale.of("sv", "SE");
+    private static final DecimalFormatSymbols SV_SYM = new DecimalFormatSymbols(SV);
+    private static final DecimalFormat ORE_FMT = new DecimalFormat("0.00", SV_SYM);
+
+    private static void printUsage() {
+        System.out.println("Usage: java -jar app.jar [--zone SE1|SE2|SE3|SE4] [--date YYYY-MM-DD] [--charging 2h|4h|8h] [--sorted] [--help]");
+        System.out.println("Zoner: SE1 SE2 SE3 SE4");
+    }
+
+    private static String ore(double sekPerKWh) {
+        double ore = sekPerKWh * 100;
+        return ORE_FMT.format(ore);
+    }
+
+    private static String spanHH(ZonedDateTime ts, ZonedDateTime te) {
+        var s = ts.toLocalTime();
+        var e = te.toLocalTime();
+        return String.format("%02d-%02d", s.getHour(), e.getHour());
+    }
+
+    private static void printNoData() {
+        System.out.println("Ingen data");
+    }
+
     public static void main(String[] args) {
-        boolean hasConsole = System.console() != null;
-        Scanner scanner = hasConsole ? new Scanner(System.in) : null;
+        System.out.println("Elprisprogrammet startar!");
 
-        LocalDate chosenDate = null;
-
-        System.out.println("Electricity price program starting");
-
-        ElpriserAPI elpriserAPI = new ElpriserAPI();
-
-        String zone = null;
-        for (int i = 0; i < args.length - 1; i++) {
-            if (args[i].equals("--zone")) {
-                zone = args[i + 1].trim().toUpperCase();
-            }
-        }
-
-        if (zone == null) {
-            if (hasConsole) {
-                System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
-                zone = scanner.nextLine().trim().toUpperCase();
-                while (!zone.equals("SE1") && !zone.equals("SE2") && !zone.equals("SE3") && !zone.equals("SE4")) {
-                    System.out.print("Enter zone (SE1, SE2, SE3, SE4): ");
-                    zone = scanner.nextLine().trim().toUpperCase();
-                }
-            } else {
-                zone = "SE3"; // default i CI/GitHub Actions
-                System.out.println("No console detected. Using default zone: " + zone);
-            }
-        }
-
-        System.out.println("Selected zone: " + zone);
-
-        switch (zone) {
-            case "SE1":
-                System.out.println("Zone SE1: Luleå/North Sweden.");
-                break;
-            case "SE2":
-                System.out.println("Zone SE2. Sundsvall/North-central Sweden.");
-                break;
-            case "SE3":
-                System.out.println("Zone SE3. Stockholm/South-central Sweden.");
-                break;
-            case "SE4":
-                System.out.println("Zone SE4. Malmö/South Sweden.");
-                break;
-            default:
-                System.out.println("Unknown zone.");
-        }
-
-        for (int i = 0; i < args.length - 1; i++) {
-            if (args[i].equals("--date")) {
-                try {
-                    chosenDate = LocalDate.parse(args[i + 1]);
-                } catch (Exception e) {
-                    System.out.println("Invalid date format. Please use YYYY-MM-DD.");
-                    if (scanner != null) scanner.close();
-                    return;
-                }
-            }
-        }
-
-        ElpriserAPI.Prisklass priceClass = ElpriserAPI.Prisklass.valueOf(zone);
-        LocalDate today = (chosenDate != null) ? chosenDate : LocalDate.now();
-        System.out.println("Using date: " + today);
-        List<ElpriserAPI.Elpris> prices = elpriserAPI.getPriser(today, priceClass);
-        System.out.println("Number of prices fetched: " + prices.size());
-
-        LocalDate tomorrow = today.plusDays(1);
-        List<ElpriserAPI.Elpris> pricesTomorrow = elpriserAPI.getPriser(tomorrow, priceClass);
-        System.out.println("Tomorrow prices fetched: " + pricesTomorrow.size());
-
-        List<ElpriserAPI.Elpris> allPrices = new ArrayList<>(prices);
-        allPrices.addAll(pricesTomorrow);
-
-        if (Arrays.asList(args).contains("--sorted")) {
-            allPrices.sort(Comparator.comparing(ElpriserAPI.Elpris::sekPerKWh).reversed());
-            System.out.println("All prices fetched: " + allPrices.size());
-        }
-
-        if (allPrices.isEmpty()) {
-            System.out.println("No prices available for today or tomorrow.");
-            if (scanner != null) scanner.close();
+        // Argument parsing
+        if (args.length == 0) {
+            printUsage();
             return;
         }
 
-        int limit = Math.min(3, allPrices.size());
-        for (int i = 0; i < limit; i++) {
-            ElpriserAPI.Elpris price = allPrices.get(i);
-            System.out.printf("Time: %s Price: %.2f SEK/kWh.%n", price.timeStart().toLocalTime(), price.sekPerKWh());
-        }
-
-        int windowHours;
-        if (hasConsole) {
-            System.out.print("Enter window length in hours (2, 4 or 8): ");
-            while (true) {
-                if (scanner.hasNextInt()) {
-                    windowHours = scanner.nextInt();
-                    if (windowHours == 2 || windowHours == 4 || windowHours == 8) break;
+        Map<String, String>kv = new HashMap<>();
+        Set<String>flags = new HashSet<>();
+        for (int i = 0; i < args.length; i++) {
+            String a = args[i];
+            if (a.startsWith("--")) {
+                if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                    kv.put(a, args[i + 1]);
+                    i++;
                 } else {
-                    scanner.next();
+                    flags.add(a);
                 }
-                System.out.println("Please enter 2, 4 or 8: ");
-            }
-        } else {
-            windowHours = 4;
-            System.out.println("No console detected. Using default window: " + windowHours + "h");
-        }
-
-        int slotMinutes = (int) Duration.between(
-                allPrices.get(0).timeStart(),
-                allPrices.get(0).timeEnd()
-        ).toMinutes();
-
-        int slotsPerHour = 60 / slotMinutes;
-        int windowSize = windowHours * slotsPerHour;
-
-        int startIndex = 0;
-        if (today.equals(LocalDate.now())) {
-            ZonedDateTime now = ZonedDateTime.now();
-            while (startIndex < allPrices.size()
-                    && !allPrices.get(startIndex).timeStart().isAfter(now)) {
-                startIndex++;
             }
         }
 
-        if (allPrices.size() - startIndex < windowSize) {
-            System.out.printf("Not enough data for a %dh window starting now.%n", windowHours);
+        if (flags.contains("--help")) {
+            printUsage();
+            return;
+        }
+
+        String zone = kv.get("--zone");
+        String dateStr = kv.get("--date");
+        String charging = kv.get("--charging");
+        boolean wantSorted = flags.contains("--sorted");
+
+        if (zone == null) {
+            System.out.println("Zon saknas. Ange till exempel: --zone SE3");
+            return;
+        }
+
+        zone = zone.trim().toUpperCase();
+        if (!zone.matches("SE[1-4]")) {
+            System.out.println("Ogiltig zon: " + zone);
+            return;
+        }
+
+        System.out.println("Vald zon: " + zone);
+
+        switch (zone) {
+            case "SE1":
+                System.out.println("Zon SE1: Luleå/Norra Sverige.");
+                break;
+            case "SE2":
+                System.out.println("Zon SE2: Sundsvall/Norra mellansverige.");
+                break;
+            case "SE3":
+                System.out.println("Zon SE3: Stockholm/Södra mellansverige.");
+                break;
+            case "SE4":
+                System.out.println("Zon SE4: Malmö/Södra Sverige.");
+                break;
+        }
+
+        LocalDate date;
+        if (dateStr == null) {
+            date = LocalDate.now();
         } else {
-            int bestStart = startIndex;
+            try {
+                date = LocalDate.parse(dateStr);
+            } catch (Exception e) {
+                System.out.println("Ogiltigt datum. Använd formatet YYYY-MM-DD.");
+                return;
+            }
+        }
+
+        System.out.println("Datum: " + date);
+
+        // Hämta data (idag + imorgon)
+        ElpriserAPI elpriserAPI = new ElpriserAPI();
+        ElpriserAPI.Prisklass priceClass = ElpriserAPI.Prisklass.valueOf(zone);
+
+        List<ElpriserAPI.Elpris> today = elpriserAPI.getPriser(date, priceClass);
+        List<ElpriserAPI.Elpris> tomorrow = elpriserAPI.getPriser(date.plusDays(1), priceClass);
+
+        List<ElpriserAPI.Elpris> all = new ArrayList<>(today);
+        all.addAll(tomorrow);
+        all.sort(Comparator.comparing(ElpriserAPI.Elpris::timeStart));
+
+        if (all.isEmpty()) {
+            printNoData();
+            return;
+        }
+
+        System.out.println("Antal priser hämtade: " + today.size());
+        System.out.println("Priser hämtade imorgon: " + tomorrow.size());
+        System.out.println("Alla priser hämtade: " + all.size());
+
+        // --sorted: fallande prislista (HH-HH xx,xx öre)
+        if (wantSorted) {
+            var lines = all.stream()
+                    .sorted(Comparator.comparingDouble(ElpriserAPI.Elpris::sekPerKWh).reversed())
+                    .map(p -> String.format("%s %s öre", spanHH(p.timeStart(), p.timeEnd()), ore(p.sekPerKWh())))
+                    .toList();
+            lines.forEach(System.out::println);
+            return;
+        }
+
+        // -charging: hitta billigaste sammanhängande fönster över dygnsgräns
+        if (charging != null) {
+            int hours;
+            if (charging.equalsIgnoreCase("2h")) hours = 2;
+            else if (charging.equalsIgnoreCase("4h")) hours = 4;
+            else if (charging.equalsIgnoreCase("8h")) hours = 8;
+            else {
+                System.out.println("Ogiltigt värde för --charging. Använd 2h, 4h eller 8h.");
+                return;
+            }
+
+            int slotMinutes = (int) Duration.between(all.getFirst().timeStart(), all.getFirst().timeEnd()).toMinutes();
+            if (slotMinutes <= 0 || 60 % slotMinutes != 0) {
+                System.out.println("Ogiltig slot-storlek.");
+                return;
+            }
+
+            int slotsPerHour = 60 / slotMinutes;
+            int windowSize = hours * slotsPerHour;
+
+            if (all.size() < windowSize) {
+                printNoData();
+                return;
+            }
+
+            int bestStart = 0;
             double bestSum = Double.MAX_VALUE;
 
-            for (int i = startIndex; i <= allPrices.size() - windowSize; i++) {
-                double sum = 0.0;
-                for (int j = i; j < i + windowSize; j++) {
-                    sum += allPrices.get(j).sekPerKWh();
-                }
+            for (int i = 0; i <= all.size() - windowSize; i++) {
+                double sum = 0;
+                for (int j = i; j < i + windowSize; j++) sum += all.get(j).sekPerKWh();
                 if (sum < bestSum) {
                     bestSum = sum;
                     bestStart = i;
                 }
             }
 
-            var start = allPrices.get(bestStart);
-            var end = allPrices.get(bestStart + windowSize - 1);
-            double avg = bestSum / windowSize;
-            System.out.printf("The cheapest %dh window is from %s to %s with an average price of %.2f SEK/kWh.%n", windowHours, start.timeStart().toLocalTime(), end.timeEnd().toLocalTime(), avg);
+            var start = all.get(bestStart).timeStart();
+            var end = all.get(bestStart + windowSize - 1).timeEnd();
+            double avgSek = bestSum / windowSize;
+
+            System.out.printf("Påbörja laddning kl %s (fönster %s–%s).%n",
+                    start.toLocalTime(), start.toLocalTime(), end.toLocalTime());
+            System.out.println("Medelpris för fönster: " + ore(avgSek) + " öre");
+            return;
         }
 
-        if (prices.isEmpty()) {
-            System.out.println("No values for today's date");
-        } else {
-            double sum = 0.0;
-            for (var price : prices) {
-                sum += price.sekPerKWh();
-            }
-            int count = prices.size();
-            int slotMinutesToday = (int) Duration.between(
-                    prices.get(0).timeStart(),
-                    prices.get(0).timeEnd()
-            ).toMinutes();
-            int totalHours = (count * slotMinutesToday) / 60;
-
-            double average = sum / count;
-            System.out.printf("Average price for %s over %dh is %.2f SEK/kWh.%n", today, totalHours, average);
-
-            prices.sort(Comparator.comparing(ElpriserAPI.Elpris::timeStart));
-
-            ElpriserAPI.Elpris minPrice = prices.get(0);
-            ElpriserAPI.Elpris maxPrice = prices.get(0);
-
-            for (int i = 1; i < prices.size(); i++) {
-                ElpriserAPI.Elpris price = prices.get(i);
-                if (price.sekPerKWh() < minPrice.sekPerKWh() ) {
-                    minPrice = price;
-                } else if (Double.compare(price.sekPerKWh(), minPrice.sekPerKWh()) == 0
-                        && price.timeStart().isBefore(minPrice.timeStart())) {
-                    minPrice = price;
-                }
-                if (price.sekPerKWh() > maxPrice.sekPerKWh()) {
-                    maxPrice = price;
-                } else if (Double.compare(price.sekPerKWh(), maxPrice.sekPerKWh()) == 0
-                        && price.timeStart().isBefore(maxPrice.timeStart())) {
-                    maxPrice = price;
-                }
-            }
-            System.out.printf("Cheapest: %s %.2f SEK/kWh.%n", minPrice.timeStart().toLocalTime(), minPrice.sekPerKWh());
-            System.out.printf("Most expensive: %s %.2f SEK/kWh.%n", maxPrice.timeStart().toLocalTime(), maxPrice.sekPerKWh());
+        // Standardrapport för idag: Medelpris + lägsta/högsta timme
+        if (today.isEmpty()) {
+            printNoData();
+            return;
         }
-        if (scanner != null) scanner.close();
+
+        // Medelpris över alla slots under dagen
+        double sumSek = today.stream().mapToDouble(ElpriserAPI.Elpris::sekPerKWh).sum();
+        double meanSek = sumSek / today.size();
+        System.out.println("Medelpris: " + ore(meanSek) + " öre");
+
+        // Aggregera till hel timme även om slots < 60 min (t.ex. 15-minutersposter)
+        Map<Integer, List<ElpriserAPI.Elpris>> byHour = new TreeMap<>();
+        for (var p : today) {
+            int h = p.timeStart().toLocalTime().getHour();
+            byHour.computeIfAbsent(h, _ -> new ArrayList<>()).add(p);
+        }
+
+        double bestAvg = Double.POSITIVE_INFINITY;
+        double worstAvg = Double.NEGATIVE_INFINITY;
+        int bestHour = 0, worstHour = 0;
+
+        for (var e : byHour.entrySet()) {
+            double avg = e.getValue().stream().mapToDouble(ElpriserAPI.Elpris::sekPerKWh).average().orElse(Double.NaN);
+            int hour = e.getKey();
+            if (avg < bestAvg || (avg == bestAvg && hour < bestHour)) {
+                bestAvg = avg; bestHour = hour;
+            }
+            if (avg > worstAvg || (avg == worstAvg && hour < worstHour)) {
+                worstAvg = avg; worstHour = hour;
+            }
+        }
+
+        String bestSpan = String.format("%02d-%02d", bestHour, (bestHour + 1) % 24);
+        String worstSpan = String.format("%02d-%02d", worstHour, (worstHour + 1) % 24);
+
+        System.out.println("Lägsta pris: " + bestSpan + " " + ore(bestAvg) + " öre");
+        System.out.println("Högsta pris: " + worstSpan + " " + ore(worstAvg) + " öre");
     }
 }
